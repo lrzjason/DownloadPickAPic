@@ -5,6 +5,9 @@ import io
 import os
 import json
 import hpsv2
+import asyncio
+from aiohttp import request
+from aiomultiprocess import Pool
 
 HPS_TARGET = 0.28
 
@@ -17,6 +20,9 @@ CAPTION_FOLDER = "captions"
 LOG_BATCH = 50
 
 LOG_FILE = "log.txt"
+
+DATASET = "yuvalkirstain/pickapic_v2_no_images"
+SPLIT = "train"
 
 def log(content,type="info"):
     if type == "debug":
@@ -43,15 +49,15 @@ def save_file(dirtory,file_name,content,ext=".txt"):
     with open(file_path, 'w', encoding='utf-8') as f:
         f.write(content)
 
-def save_image(dirtory,file_url,file_name,downloaded_img=None):
+async def save_image(dirtory, file_url, file_name, downloaded_img=None):
     file_url_base = os.path.basename(file_url)
     if downloaded_img is None:
         print(f"downloading image: {file_name}")
         # Get the image content from the URL
-        r = requests.get(file_url)
-        # Create a file-like object from the bytes
-        image_file = io.BytesIO(r.content)
-        img = Image.open(image_file)
+        async with request("GET", file_url) as response:
+            # Create a file-like object from the bytes
+            image_file = io.BytesIO(await response.read())
+            img = Image.open(image_file)
     else:
         print(f"use downloaded image: {file_name}")
         img = downloaded_img
@@ -66,8 +72,31 @@ def save_image(dirtory,file_url,file_name,downloaded_img=None):
     img_path = os.path.join(dirtory,f"{file_name}{ext}")
     img.save(img_path, ext[1:])
 
+# def save_image(dirtory,file_url,file_name,downloaded_img=None):
+#     file_url_base = os.path.basename(file_url)
+#     if downloaded_img is None:
+#         print(f"downloading image: {file_name}")
+#         # Get the image content from the URL
+#         r = requests.get(file_url)
+#         # Create a file-like object from the bytes
+#         image_file = io.BytesIO(r.content)
+#         img = Image.open(image_file)
+#     else:
+#         print(f"use downloaded image: {file_name}")
+#         img = downloaded_img
 
-def main():
+#     # Create a directory if it doesn't exist
+#     if not os.path.exists(dirtory):
+#         os.makedirs(dirtory)
+    
+#     name, ext = os.path.splitext(file_url_base)
+
+#     # save file by join dir and file_name
+#     img_path = os.path.join(dirtory,f"{file_name}{ext}")
+#     img.save(img_path, ext[1:])
+
+
+async def main():
     # part 1 preparation
     # create caption folder if not exist
     if not os.path.exists(CAPTION_FOLDER):
@@ -92,7 +121,7 @@ def main():
     # python trainscripts/imagesliders/train_lora-scale-xl.py --name 'pickscoreSliderXL' --rank 4 --alpha 1 --config_file 'trainscripts/imagesliders/data/config-xl.yaml' --folder_main 'F:/ImageSet/PickScore/images' --folders 'low, high' --scales '-1, 1'
 
     # part 1 load dataset
-    iterable_dataset = load_dataset("yuvalkirstain/pickapic_v2_no_images",split="train", streaming=True)
+    iterable_dataset = load_dataset(DATASET,split=SPLIT, streaming=True)
     # load all from test rather than 40000
     subset = list(iterable_dataset.filter(lambda record: record["has_label"]))
     # subset = list(iterable_dataset.filter(lambda record: record["has_label"]).take(40000))
@@ -169,10 +198,17 @@ def main():
 
 
         # Get the image content from the URL
-        r = requests.get(high_image_url)
-        # Create a file-like object from the bytes
-        image_file = io.BytesIO(r.content)
-        img = Image.open(image_file)
+        # r = requests.get(high_image_url)
+        # # Create a file-like object from the bytes
+        # image_file = io.BytesIO(r.content)
+        # img = Image.open(image_file)
+
+
+        async with request("GET", high_image_url) as response:
+            # Create a file-like object from the bytes
+            image_file = io.BytesIO(await response.read())
+            img = Image.open(image_file)
+
         hps_score = hpsv2.score(img, item['caption'])[0]
         # print(hps_score)
 
@@ -183,13 +219,13 @@ def main():
         # print(item[f'best_image_uid'])
         for indicator,indicator_folder in enumerate(indicator_folders):
             # print(indicator)
-            image_folder = os.path.join("images",indicator_folder[indicator])
+            image_folder = os.path.join("images",indicator_folder)
             if item[f'label_{indicator}'] == 1:
                 # use the downloaded img to skip download request
-                save_image(image_folder,item[f'image_{indicator}_url'],item[f'best_image_uid'],img)
+                await save_image(image_folder,item[f'image_{indicator}_url'],item[f'best_image_uid'],img)
             else:
                 # save image with url request
-                save_image(image_folder,item[f'image_{indicator}_url'],item[f'best_image_uid'])
+                await save_image(image_folder,item[f'image_{indicator}_url'],item[f'best_image_uid'])
         # log caption
         save_file(CAPTION_FOLDER,item[f'best_image_uid'],item['caption'])
         
@@ -205,4 +241,4 @@ def main():
         }
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
