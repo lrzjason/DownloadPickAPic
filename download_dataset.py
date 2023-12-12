@@ -197,6 +197,8 @@ async def main():
                     'caption':str(item['caption']),
                     'label_0':str(item['label_0']),
                     'label_1':str(item['label_1']),
+                    'model_0':str(item['model_0']),
+                    'model_1':str(item['model_1']),
                     'image_0_url':str(item['image_0_url']),
                     'image_1_url':str(item['image_1_url']),
                 }
