@@ -272,6 +272,8 @@ async def main():
             'label_1':str(item['label_1']),
             'image_0_url':str(item['image_0_url']),
             'image_1_url':str(item['image_1_url']),
+            'model_0':str(item['model_0']),
+            'model_1':str(item['model_1']),
             'hps_score':str(hps_score),
         }
 
