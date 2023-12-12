@@ -14,14 +14,19 @@ HPS_TARGET = 0.28
 SKIP_REASON_0 = "already processed"
 SKIP_REASON_1 = "label_0 equal label_1"
 SKIP_REASON_2 = f"HPSv2 lower than target({HPS_TARGET})"
+LOW_QUALITY_MODEL_LIST = ['stabilityai/stable-diffusion-2-1']
+LOW_LIST_STR = ",".join(LOW_QUALITY_MODEL_LIST)
+SKIP_REASON_3 = f"Skip Model in {LOW_LIST_STR}"
 
 CAPTION_FOLDER = "captions"
+CAPTION_EXT = ".txt"
 
 LOG_BATCH = 50
 
 LOG_FILE = "log.txt"
 
-DATASET = "yuvalkirstain/pickapic_v2_no_images"
+# DATASET = "yuvalkirstain/pickapic_v2_no_images"
+DATASET = "F:/ImageSet/PickScore/pickapic_v2_no_images"
 SPLIT = "train"
 
 def log(content,type="info"):
@@ -48,6 +53,14 @@ def save_file(dirtory,file_name,content,ext=".txt"):
     # write caption to file
     with open(file_path, 'w', encoding='utf-8') as f:
         f.write(content)
+
+# remove file from dirtory
+def remove_file(dirtory,file_name):
+    # save file by join dir and file_name
+    file_path = os.path.join(dirtory,f"{file_name}")
+    # check file_path exist or not
+    if os.path.exists(file_path):
+        os.remove(file_path)
 
 async def save_image(dirtory, file_url, file_name, downloaded_img=None):
     file_url_base = os.path.basename(file_url)
@@ -128,6 +141,7 @@ async def main():
 
     # part 3 process
     count = 0
+    indicator_folders = ["low","high"]
     # # print(take1)
     for item in subset:
         # log process
@@ -142,11 +156,33 @@ async def main():
         log(f"Count: {str(count)}", type="debug")
         # determine high image url
         high_image_url = item[f'image_0_url']
+        high_image_model = item[f'model_0']
         if item['label_1'] == 1:
             high_image_url = item[f'image_1_url']
+            high_image_model = item[f'model_1']
+
+        # check best model is in LOW_QUALITY_MODEL_LIST
+        if high_image_model in LOW_QUALITY_MODEL_LIST:
+            log(f"Handle low quality model: {high_image_model}")
+            # check process has image_id or not
+            if download_process["skipped"].get(item[f'best_image_uid'],None) is None:
+                # add image_id to skipped part of process
+                download_process["skipped"][item[f'best_image_uid']] = SKIP_REASON_3
+            
+            # remove the files if stored before
+            if f"{item[f'best_image_uid']}{CAPTION_EXT}" in processed_captions:
+                # remove caption file
+                remove_file(CAPTION_FOLDER,f"{item[f'best_image_uid']}{CAPTION_EXT}")
+                log(f"{CAPTION_FOLDER}/{item[f'best_image_uid']}{CAPTION_EXT} removed")
+                # remove image file
+                for folder in indicator_folders:
+                    remove_file(os.path.join("images",folder),f"{item[f'best_image_uid']}.png")
+                    log(f"images/{folder}/{item[f'best_image_uid']}{CAPTION_EXT} removed")
+            continue
+
 
         # skip processed image
-        if f"{item[f'best_image_uid']}.txt" in processed_captions or item[f'best_image_uid'] in download_process["processed"].keys() or item[f'best_image_uid'] in download_process["skipped"].keys():
+        if f"{item[f'best_image_uid']}{CAPTION_EXT}" in processed_captions or item[f'best_image_uid'] in download_process["processed"].keys() or item[f'best_image_uid'] in download_process["skipped"].keys():
             if item[f'best_image_uid'] in download_process["processed"].keys():
                 log(f"Count: {str(count)} Skip: {item[f'best_image_uid']} already in processed")
                 continue
@@ -154,7 +190,7 @@ async def main():
                 log(f"Count: {str(count)} Skip: {item[f'best_image_uid']} already in skipped")
                 continue
             # log missing information of processed image
-            if f"{item[f'best_image_uid']}.txt" in processed_captions:
+            if f"{item[f'best_image_uid']}{CAPTION_EXT}" in processed_captions:
                 log(f"Count: {str(count)} Skip: {item[f'best_image_uid']} already processed in processed_captions")
                 download_process["processed"][item[f'best_image_uid']]={
                     'best_image_uid':str(item['best_image_uid']),
@@ -187,7 +223,6 @@ async def main():
         # 'num_example_per_prompt', '__index_level_0__']
 
         # indicators = [0,1]
-        indicator_folders = ["low","high"]
 
         # it should already filtered by dataset filter
         # skip equal images
